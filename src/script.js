@@ -32,10 +32,12 @@ const allowedShapeProperties = {
     database: ["width", "height"],
     line: ["length", "rotation", "width"],
     "line-arrow": ["length", "rotation", "width"],
-    arrow: ["length", "rotation", "width"]
+    arrow: ["length", "rotation", "width"],
+    cat: ["size"],
+    dog: ["size"]
 };
 
-// Function to parse YAML input and filter properties
+// Function to parse YAML input and apply default properties
 function parseYAML(yamlText) {
     try {
         const doc = jsyaml.load(yamlText);
@@ -46,7 +48,7 @@ function parseYAML(yamlText) {
             el.x = el.startX;
             el.y = el.startY;
 
-            // Validate and set shape properties
+            // Set shape defaults
             if (el.shape) {
                 const { premade, custom } = el.shape;
                 if (premade && custom) {
@@ -58,31 +60,15 @@ function parseYAML(yamlText) {
 
                 if (premade) {
                     const allowedProperties = allowedShapeProperties[premade];
+                    el.shape = setShapeDefaults(el.shape, premade);
                     el.shape = filterProperties(el.shape, allowedProperties);
-
-                    // Set defaults
-                    switch (premade) {
-                        case "rectangle":
-                            el.shape.width = el.shape.width || 100;
-                            el.shape.height = el.shape.height || 50;
-                            break;
-                        case "star":
-                            el.shape.size = el.shape.size || 50;
-                            break;
-                        case "line":
-                        case "line-arrow":
-                        case "arrow":
-                            el.shape.length = el.shape.length || 100;
-                            el.shape.rotation = el.shape.rotation || 0;
-                            el.shape.width = el.shape.width || 5;
-                            break;
-                        case "cloud":
-                        case "database":
-                            el.shape.width = el.shape.width || 100;
-                            el.shape.height = el.shape.height || 50;
-                            break;
-                    }
                 }
+
+                // Set default outline properties
+                el.shape.outline = {
+                    thickness: el.shape.outline?.thickness || 1,
+                    color: el.shape.outline?.color || "black"
+                };
             } else {
                 throw new Error("Each object must have a 'shape' property.");
             }
@@ -103,10 +89,10 @@ function parseYAML(yamlText) {
     }
 }
 
-// Helper function to filter properties
+// Filter properties to remove extraneous fields based on allowed properties
 function filterProperties(shape, allowedProperties) {
     return Object.keys(shape).reduce((filtered, key) => {
-        if (allowedProperties.includes(key) || key === "premade" || key === "custom") {
+        if (allowedProperties.includes(key) || key === "premade" || key === "custom" || key === "outline") {
             filtered[key] = shape[key];
         }
         return filtered;
@@ -114,13 +100,19 @@ function filterProperties(shape, allowedProperties) {
 }
 
 
-// Function to draw the current state of the diagram
+// Drawing Functions
 function drawDiagram() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     elements.forEach(element => {
+        const { outline } = element.shape || {};
+        const outlineThickness = outline?.thickness || 1;
+        const outlineColor = outline?.color || "black";
+
         ctx.beginPath();
         ctx.fillStyle = element.color;
+        ctx.lineWidth = outlineThickness;
+        ctx.strokeStyle = outlineColor;
 
         const shape = element.shape;
         const { premade } = shape;
@@ -142,12 +134,20 @@ function drawDiagram() {
             case "arrow":
                 drawLineOrArrow(ctx, element.x, element.y, shape.length, shape.rotation, premade);
                 break;
+            case "cat":
+                drawCat(ctx, element.x, element.y, shape.size);
+                break;
+            case "dog":
+                drawDog(ctx, element.x, element.y, shape.size);
+                break;
         }
 
+        // Fill and outline shape
         ctx.fill();
+        if (outline) ctx.stroke();
         ctx.closePath();
 
-        // Add label with offset and style
+        // Draw label
         if (element.label && element.label.value) {
             ctx.fillStyle = element.label.color;
             ctx.font = element.label.font;
@@ -289,6 +289,95 @@ function createGIF(frames) {
     gif.render();
 }
 
+function drawCat(ctx, x, y, size) {
+    // Draw head
+    ctx.beginPath();
+    ctx.arc(x, y, size * 0.4, 0, Math.PI * 2); // Head
+    ctx.fill();
+
+    // Draw ears
+    ctx.beginPath();
+    ctx.moveTo(x - size * 0.2, y - size * 0.4); // Left ear
+    ctx.lineTo(x - size * 0.4, y - size * 0.6);
+    ctx.lineTo(x - size * 0.1, y - size * 0.5);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(x + size * 0.2, y - size * 0.4); // Right ear
+    ctx.lineTo(x + size * 0.4, y - size * 0.6);
+    ctx.lineTo(x + size * 0.1, y - size * 0.5);
+    ctx.fill();
+
+    // Draw eyes
+    ctx.beginPath();
+    ctx.arc(x - size * 0.1, y - size * 0.1, size * 0.05, 0, Math.PI * 2); // Left eye
+    ctx.arc(x + size * 0.1, y - size * 0.1, size * 0.05, 0, Math.PI * 2); // Right eye
+    ctx.fillStyle = "black";
+    ctx.fill();
+
+    // Draw nose
+    ctx.beginPath();
+    ctx.moveTo(x, y); // Nose
+    ctx.lineTo(x - size * 0.05, y + size * 0.05);
+    ctx.lineTo(x + size * 0.05, y + size * 0.05);
+    ctx.closePath();
+    ctx.fillStyle = "black";
+    ctx.fill();
+
+    // Draw whiskers
+    ctx.beginPath();
+    ctx.moveTo(x - size * 0.15, y + size * 0.05); // Left whiskers
+    ctx.lineTo(x - size * 0.3, y + size * 0.1);
+    ctx.moveTo(x - size * 0.15, y + size * 0.1);
+    ctx.lineTo(x - size * 0.3, y + size * 0.15);
+
+    ctx.moveTo(x + size * 0.15, y + size * 0.05); // Right whiskers
+    ctx.lineTo(x + size * 0.3, y + size * 0.1);
+    ctx.moveTo(x + size * 0.15, y + size * 0.1);
+    ctx.lineTo(x + size * 0.3, y + size * 0.15);
+    ctx.strokeStyle = "black";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+}
+
+function drawDog(ctx, x, y, size) {
+    // Draw head
+    ctx.beginPath();
+    ctx.arc(x, y, size * 0.4, 0, Math.PI * 2); // Head
+    ctx.fill();
+
+    // Draw ears
+    ctx.beginPath();
+    ctx.ellipse(x - size * 0.3, y - size * 0.2, size * 0.15, size * 0.25, Math.PI / 6, 0, Math.PI * 2); // Left ear
+    ctx.ellipse(x + size * 0.3, y - size * 0.2, size * 0.15, size * 0.25, -Math.PI / 6, 0, Math.PI * 2); // Right ear
+    ctx.fillStyle = "darkbrown";
+    ctx.fill();
+
+    // Draw eyes
+    ctx.beginPath();
+    ctx.arc(x - size * 0.1, y - size * 0.1, size * 0.05, 0, Math.PI * 2); // Left eye
+    ctx.arc(x + size * 0.1, y - size * 0.1, size * 0.05, 0, Math.PI * 2); // Right eye
+    ctx.fillStyle = "black";
+    ctx.fill();
+
+    // Draw nose
+    ctx.beginPath();
+    ctx.arc(x, y + size * 0.1, size * 0.05, 0, Math.PI * 2); // Nose
+    ctx.fillStyle = "black";
+    ctx.fill();
+
+    // Draw mouth
+    ctx.beginPath();
+    ctx.moveTo(x - size * 0.05, y + size * 0.15);
+    ctx.lineTo(x, y + size * 0.2);
+    ctx.lineTo(x + size * 0.05, y + size * 0.15);
+    ctx.strokeStyle = "black";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+}
+
+
+
 function drawStar(ctx, x, y, size) {
     const spikes = 5;
     const outerRadius = size;
@@ -357,6 +446,35 @@ const shapeDefaults = {
     database: { width: 100, height: 50 }
 };
 
+// Function to set default values for shapes
+function setShapeDefaults(shape, premade) {
+    switch (premade) {
+        case "rectangle":
+            shape.width = shape.width || 100;
+            shape.height = shape.height || 50;
+            break;
+        case "star":
+            shape.size = shape.size || 50;
+            break;
+        case "line":
+        case "line-arrow":
+        case "arrow":
+            shape.length = shape.length || 100;
+            shape.rotation = shape.rotation || 0;
+            shape.width = shape.width || 5;
+            break;
+        case "cloud":
+        case "database":
+            shape.width = shape.width || 100;
+            shape.height = shape.height || 50;
+            break;
+        case "cat":
+        case "dog":
+            shape.size = shape.size || 50;
+            break;
+    }
+    return shape;
+}
 
 // Function to update YAML Defaults Display based on cursor position
 function updateYamlDefaultsDisplay() {
@@ -370,6 +488,11 @@ function updateYamlDefaultsDisplay() {
             if (objectUnderCursor.shape) {
                 const { premade } = objectUnderCursor.shape;
                 if (premade && allowedShapeProperties[premade]) {
+                    objectUnderCursor.shape = setShapeDefaults(objectUnderCursor.shape, premade); // Apply shape defaults
+                    objectUnderCursor.shape.outline = {
+                        thickness: objectUnderCursor.shape.outline?.thickness || 1,
+                        color: objectUnderCursor.shape.outline?.color || "black"
+                    };
                     objectUnderCursor.shape = filterProperties(objectUnderCursor.shape, allowedShapeProperties[premade]);
                 }
             }
@@ -385,7 +508,7 @@ function updateYamlDefaultsDisplay() {
                 ...objectUnderCursor.label
             };
 
-            // Display filtered object with defaults in the read-only text area
+            // Display the object with defaults in the read-only text area
             yamlDefaultsDisplay.value = jsyaml.dump(objectUnderCursor);
         } else {
             yamlDefaultsDisplay.value = "";
@@ -395,6 +518,7 @@ function updateYamlDefaultsDisplay() {
         yamlDefaultsDisplay.value = "";
     }
 }
+
 
 // Helper function to find the object under cursor in YAML input
 function getObjectUnderCursor(doc, cursorPosition) {
