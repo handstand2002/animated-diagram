@@ -637,10 +637,37 @@ function drawCloud(ctx, x, y, width, height) {
 }
 
 function drawDatabase(ctx, x, y, width, height) {
+
+    ctx.rect(x - width/2, y, width, height)
+    ctx.fill();
+
+    // Draw the top full ellipse (showing both front and back)
+    ctx.beginPath();
     ctx.ellipse(x, y, width / 2, height / 4, 0, 0, Math.PI * 2);
-    ctx.rect(x - width / 2, y - height / 2, width, height);
-    ctx.moveTo(x - width / 2, y + height / 2);
-    ctx.ellipse(x, y + height / 2, width / 2, height / 4, 0, 0, Math.PI);
+    ctx.fill();
+    ctx.stroke();
+
+    // Draw middle ellipses (only front halves)
+    for (let i = 1; i < 4; i++) {
+        ctx.beginPath();
+        ctx.ellipse(x, y + (i * height) / 4, width / 2, height / 4, 0, 0, Math.PI);
+        ctx.fill();
+        ctx.stroke();
+    }
+
+    // Draw the bottom half-ellipse for the base outline
+    ctx.beginPath();
+    ctx.ellipse(x, y + height, width / 2, height / 4, 0, 0, Math.PI);
+    ctx.fill();
+    ctx.stroke();
+
+    // Draw the vertical lines on the sides
+    ctx.beginPath();
+    ctx.moveTo(x - width / 2, y); // Left vertical line
+    ctx.lineTo(x - width / 2, y + height);
+    ctx.moveTo(x + width / 2, y); // Right vertical line
+    ctx.lineTo(x + width / 2, y + height);
+    ctx.stroke();
 }
 
 function drawLineOrArrow(ctx, x, y, length, rotation, type) {
