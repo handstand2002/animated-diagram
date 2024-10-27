@@ -180,9 +180,14 @@ document.getElementById("loadYAMLButton").addEventListener("click", function () 
 
 // Animate button
 document.getElementById("animateButton").addEventListener("click", function () {
-    objectsAndTransitions = parseYAML(yamlText())
-    drawDiagram(objectsAndTransitions)
-    animateDiagram(objectsAndTransitions);
+    try {
+        objectsAndTransitions = parseYAML(yamlText())
+        drawDiagram(objectsAndTransitions)
+        animateDiagram(objectsAndTransitions);
+    } catch (error) {
+        console.error('Error parsing YAML: ' + error.message);
+        throw error
+    }
 });
 
 // Generate GIF button
@@ -205,42 +210,43 @@ const allowedShapeProperties = {
 };
 
 function parseYamlAndRender(yamlText) {
-    objectsAndTransitions = parseYAML(yamlText)
-    drawDiagram(objectsAndTransitions)
-}
-
-// Function to parse YAML input, apply defaults, and validate properties
-function parseYAML(yamlText) {
     try {
-        const doc = jsyaml.load(yamlText);
-        let elements = doc.objects || [];
-        let transitions = doc.transitions || [];
-
-        elements.forEach(el => {
-            // Validate against expected properties
-            setDefaults(el, EXPECTED_PROPERTIES.object, "object.");
-            warnUnexpectedProps(el, EXPECTED_PROPERTIES.object, "object.");
-            errorMissingRequiredProps(el, EXPECTED_PROPERTIES.object, "object.")
-            errorExtraneousProps(el, EXPECTED_PROPERTIES.object, "object.")
-            applyTransforms(el, EXPECTED_PROPERTIES.object, "object.")
-
-            console.log("Element from yml: ", el)
-        });
-
-        // TODO: make extraneous properties display warnings
-        transitions.forEach(tr => {
-            // Validate transitions against expected properties
-            setDefaults(tr, EXPECTED_PROPERTIES.transition, "transition.");
-//            warnUnexpectedProps(tr, EXPECTED_PROPERTIES.transition, "transition.");
-//            errorMissingRequiredProps(tr, EXPECTED_PROPERTIES.transition, "transition.")
-//            errorExtraneousProps(tr, EXPECTED_PROPERTIES.transition, "transition.")
-            applyTransforms(tr, EXPECTED_PROPERTIES.transition, "transition.")
-        });
-        return {elements: elements, transitions: transitions}
+        objectsAndTransitions = parseYAML(yamlText)
+        drawDiagram(objectsAndTransitions)
     } catch (error) {
         console.error('Error parsing YAML: ' + error.message);
         throw error
     }
+}
+
+// Function to parse YAML input, apply defaults, and validate properties
+function parseYAML(yamlText) {
+
+    const doc = jsyaml.load(yamlText);
+    let elements = doc.objects || [];
+    let transitions = doc.transitions || [];
+
+    elements.forEach(el => {
+        // Validate against expected properties
+        setDefaults(el, EXPECTED_PROPERTIES.object, "object.");
+        warnUnexpectedProps(el, EXPECTED_PROPERTIES.object, "object.");
+        errorMissingRequiredProps(el, EXPECTED_PROPERTIES.object, "object.")
+        errorExtraneousProps(el, EXPECTED_PROPERTIES.object, "object.")
+        applyTransforms(el, EXPECTED_PROPERTIES.object, "object.")
+
+        console.log("Element from yml: ", el)
+    });
+
+    // TODO: make extraneous properties display warnings
+    transitions.forEach(tr => {
+        // Validate transitions against expected properties
+        setDefaults(tr, EXPECTED_PROPERTIES.transition, "transition.");
+//            warnUnexpectedProps(tr, EXPECTED_PROPERTIES.transition, "transition.");
+//            errorMissingRequiredProps(tr, EXPECTED_PROPERTIES.transition, "transition.")
+//            errorExtraneousProps(tr, EXPECTED_PROPERTIES.transition, "transition.")
+        applyTransforms(tr, EXPECTED_PROPERTIES.transition, "transition.")
+    });
+    return {elements: elements, transitions: transitions}
 }
 
 // Filter properties to remove extraneous fields based on allowed properties
@@ -722,8 +728,7 @@ function updateYamlDefaultsDisplay() {
             yamlDefaultsDisplay.value = "";
         }
     } catch (error) {
-        console.error("Error parsing YAML:", error);
-        yamlDefaultsDisplay.value = "";
+        yamlDefaultsDisplay.value = "Error parsing Yaml:\n" + error.message;
     }
 }
 
