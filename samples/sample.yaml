@@ -1,0 +1,29 @@
+objects:
+  - name: o1
+    icon:
+      shape: star
+      size: 50
+      color: "#DDDDDD"
+    label:
+      value: A
+      offsetX: 15
+      offsetY: 35
+      font: '30px Arial'
+      style: bold
+      color: green
+    position:
+      x: 50
+      y: 50
+
+transitions:
+  - name: o1
+    timeStart: 0
+    timeEnd: 1000
+    strategy: cosine
+    position:
+      x.end: 300
+      y.end: 200
+    icon:
+      color.end: yellow
+      size.end: 100
+

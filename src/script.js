@@ -1,21 +1,188 @@
-let elements = [];
-let movements = [];
 let animationId;
 let startTime;
+// TODO: make duration configurable by user
 const animationDuration = 10000; // Adjust as needed for longer/shorter animations
 const frames = [];
 const canvas = document.getElementById('diagramCanvas');
 const ctx = canvas.getContext('2d');
 
+const yamlInput = document.getElementById("yamlInput");
+const yamlDefaultsDisplay = document.getElementById("yamlDefaultsDisplay");
+const yamlText = () => yamlInput.value;
+
+const EXPECTED_PROPERTIES = {
+    object: {
+        name: { required: true },
+        icon: {
+            shape: { required: true },
+            outline: {
+                thickness: { default: 1 },
+                color: { default: "black", transform: c => standardizeColor(c) }
+            },
+            color: { default: "black", transform: c => standardizeColor(c) },
+            size: { default: 50, allowed: (i) => ['star', 'cat', 'dog'].indexOf(i.icon?.shape) != -1}, // Optional, depending on the shape type
+            width: { default: 50, allowed: (i) => ['rectangle', 'cloud', 'database', 'line', 'line-arrow', 'arrow'].indexOf(i.icon?.shape) != -1 },
+            height: { default: 50, allowed: (i) => ['rectangle', 'cloud', 'database', 'line', 'line-arrow', 'arrow'].indexOf(i.icon?.shape) != -1 }
+        },
+        position: {
+            x: { default: 0 },
+            y: { default: 0 }
+        },
+        label: {
+            offsetX: { default: 10 },
+            offsetY: { default: 10 },
+            font: { default: '14px Arial' },
+            style: { default: 'normal' },
+            color: { default: 'black', transform: c => standardizeColor(c) },
+            value: { default: '' }
+        }
+    },
+    transition: {
+        name: { required: true },
+        timeStart: { required: true },
+        timeEnd: { required: true },
+        position: {
+            'x.start': { required: false },
+            'x.end': { required: false },
+            'y.start': { required: false },
+            'y.end': { required: false }
+        },
+        label: {
+            'offsetX.start': { required: false },
+            'offsetX.end': { required: false },
+            'offsetY.start': { required: false },
+            'offsetY.end': { required: false },
+            'color.start': { required: false, transform: c => standardizeColor(c) },
+            'color.end': { required: false, transform: c => standardizeColor(c) }
+        },
+        icon: {
+            'color.start': { required: false, transform: c => standardizeColor(c) },
+            'color.end': { required: false, transform: c => standardizeColor(c) },
+            'size.start': { required: false },
+            'size.end': { required: false },
+            'height.start': { required: false },
+            'height.end': { required: false },
+            'width.start': { required: false },
+            'width.end': { required: false },
+            outline: {
+                'thickness.start': { required: false },
+                'thickness.end': { required: false },
+                'color.start': { required: false, transform: c => standardizeColor(c) },
+                'color.end': { required: false, transform: c => standardizeColor(c) }
+            }
+        }
+    }
+};
+
+function warnUnexpectedProps(obj, expectedStructure, path = "") {
+    for (let key in obj) {
+        if (!expectedStructure[key]) {
+            console.warn(`Unexpected property "${path}${key}" found in YAML.`);
+        } else if (typeof obj[key] === "object" && !Array.isArray(obj[key])) {
+            warnUnexpectedProps(obj[key], expectedStructure[key], `${path}${key}.`);
+        }
+    }
+}
+
+function applyTransforms(obj, expectedStructure, path = "") {
+    for (let key in obj) {
+        if (expectedStructure?.[key]?.transform) {
+            obj[key] = expectedStructure?.[key]?.transform(obj[key])
+        } else if (typeof obj[key] === "object" && !Array.isArray(obj[key])) {
+            applyTransforms(obj[key], expectedStructure[key], `${path}${key}.`);
+        }
+    }
+}
+
+function errorMissingRequiredProps(obj, expectedStructure, path = "", shape) {
+    if (typeof shape === 'undefined') {
+        shape = obj
+    }
+    for (let key in expectedStructure) {
+        if (typeof expectedStructure[key].required !== 'undefined') {
+          let t = expectedStructure[key].required
+          if (typeof t === 'function') {
+            t = t(shape)
+          }
+          if (typeof t !== 'boolean') {
+              throw new Error("Unexpected type of " + t);
+          }
+          if (t && typeof obj[key] === 'undefined') {
+              throw new Error(`Expected required property "${path}${key}" but was not present`)
+          }
+        } else if (typeof obj[key] === "object" && !Array.isArray(obj[key])) {
+            errorMissingRequiredProps(obj[key], expectedStructure[key], `${path}${key}.`, shape);
+        }
+    }
+}
+
+function errorExtraneousProps(obj, expectedStructure, path = "", diagramObj) {
+    if (typeof diagramObj === 'undefined') {
+        diagramObj = obj
+    }
+    for (let key in expectedStructure) {
+        if (typeof expectedStructure[key].allowed !== 'undefined' && typeof obj[key] !== 'undefined') {
+          let t = expectedStructure[key].allowed
+          if (typeof t === 'function') {
+            t = t(diagramObj)
+          }
+          if (typeof t !== 'boolean') {
+              throw new Error("Unexpected type of " + t);
+          }
+          if (!t) {
+              throw new Error(`Property "${path}${key}" is not allowed for "${diagramObj.name}"`)
+          }
+        } else if (typeof obj[key] === "object" && !Array.isArray(obj[key])) {
+            errorExtraneousProps(obj[key], expectedStructure[key], `${path}${key}.`, diagramObj);
+        }
+    }
+}
+
+function propertyAllowed(diagramObj, propConstraints) {
+    if (typeof propConstraints?.allowed === 'undefined') {
+        return true
+    }
+    if (typeof propConstraints.allowed !== 'function') {
+        console.error("Unexpected type of 'allowed' constraint - expected function but got " + typeof propConstraints.allowed, propConstraints)
+        throw new Error("Unexpected config")
+    }
+    let res = propConstraints.allowed(diagramObj)
+    if (typeof res !== 'boolean') {
+        console.error("Unexpected result of 'allowed' constraint - expected boolean but got " + typeof res, propConstraints)
+        throw new Error("Unexpected config")
+    }
+    return res;
+}
+
+function setDefaults(obj, expectedStructure, path = "", diagramObj) {
+    if (typeof diagramObj === 'undefined') {
+        diagramObj = obj
+    }
+    for (let key in expectedStructure) {
+        if (typeof obj[key] === 'undefined' && expectedStructure[key].default && propertyAllowed(diagramObj, expectedStructure[key])) {
+            obj[key] = expectedStructure[key].default
+        } else if (typeof expectedStructure[key] === "object" && !Array.isArray(obj[key])
+                && typeof expectedStructure[key].default === 'undefined'
+                && typeof expectedStructure[key].required === 'undefined'
+                && typeof expectedStructure[key].allowed === 'undefined') {
+            if (typeof obj[key] === 'undefined') {
+                obj[key] = {}
+            }
+            setDefaults(obj[key], expectedStructure[key], `${path}${key}.`, diagramObj);
+        }
+    }
+}
+
 // Load YAML button
 document.getElementById("loadYAMLButton").addEventListener("click", function () {
-    const yamlText = document.getElementById("yamlInput").value;
-    parseYAML(yamlText);
+    parseYamlAndRender(yamlText());
 });
 
 // Animate button
 document.getElementById("animateButton").addEventListener("click", function () {
-    animateDiagram();
+    objectsAndTransitions = parseYAML(yamlText())
+    drawDiagram(objectsAndTransitions)
+    animateDiagram(objectsAndTransitions);
 });
 
 // Generate GIF button
@@ -24,7 +191,7 @@ document.getElementById("generateGIFButton").addEventListener("click", function 
 });
 
 
-// Allowed properties for each premade shape type
+// Allowed properties for each preset shape type
 const allowedShapeProperties = {
     rectangle: ["width", "height"],
     star: ["size"],
@@ -37,62 +204,49 @@ const allowedShapeProperties = {
     dog: ["size"]
 };
 
-// Function to parse YAML input and apply default properties
+function parseYamlAndRender(yamlText) {
+    objectsAndTransitions = parseYAML(yamlText)
+    drawDiagram(objectsAndTransitions)
+}
+
+// Function to parse YAML input, apply defaults, and validate properties
 function parseYAML(yamlText) {
     try {
         const doc = jsyaml.load(yamlText);
-        elements = doc.objects || [];
-        movements = doc.movements || [];
+        let elements = doc.objects || [];
+        let transitions = doc.transitions || [];
 
         elements.forEach(el => {
-            el.x = el.startX;
-            el.y = el.startY;
+            // Validate against expected properties
+            setDefaults(el, EXPECTED_PROPERTIES.object, "object.");
+            warnUnexpectedProps(el, EXPECTED_PROPERTIES.object, "object.");
+            errorMissingRequiredProps(el, EXPECTED_PROPERTIES.object, "object.")
+            errorExtraneousProps(el, EXPECTED_PROPERTIES.object, "object.")
+            applyTransforms(el, EXPECTED_PROPERTIES.object, "object.")
 
-            // Set shape defaults
-            if (el.shape) {
-                const { premade, custom } = el.shape;
-                if (premade && custom) {
-                    throw new Error("Shape cannot have both 'premade' and 'custom' values");
-                }
-                if (!premade && !custom) {
-                    throw new Error("Shape must specify either 'premade' or 'custom'");
-                }
-
-                if (premade) {
-                    const allowedProperties = allowedShapeProperties[premade];
-                    el.shape = setShapeDefaults(el.shape, premade);
-                    el.shape = filterProperties(el.shape, allowedProperties);
-                }
-
-                // Set default outline properties
-                el.shape.outline = {
-                    thickness: el.shape.outline?.thickness || 1,
-                    color: el.shape.outline?.color || "black"
-                };
-            } else {
-                throw new Error("Each object must have a 'shape' property.");
-            }
-
-            // Default label properties
-            el.label = el.label || {};
-            el.label.offsetX = el.label.offsetX || 10;
-            el.label.offsetY = el.label.offsetY || 10;
-            el.label.font = el.label.font || '14px Arial';
-            el.label.style = el.label.style || 'normal';
-            el.label.color = el.label.color || 'black';
-            el.label.value = el.label.value || '';
+            console.log("Element from yml: ", el)
         });
 
-        drawDiagram();
+        // TODO: make extraneous properties display warnings
+        transitions.forEach(tr => {
+            // Validate transitions against expected properties
+            setDefaults(tr, EXPECTED_PROPERTIES.transition, "transition.");
+//            warnUnexpectedProps(tr, EXPECTED_PROPERTIES.transition, "transition.");
+//            errorMissingRequiredProps(tr, EXPECTED_PROPERTIES.transition, "transition.")
+//            errorExtraneousProps(tr, EXPECTED_PROPERTIES.transition, "transition.")
+            applyTransforms(tr, EXPECTED_PROPERTIES.transition, "transition.")
+        });
+        return {elements: elements, transitions: transitions}
     } catch (error) {
-        alert('Error parsing YAML: ' + error.message);
+        console.error('Error parsing YAML: ' + error.message);
+        throw error
     }
 }
 
 // Filter properties to remove extraneous fields based on allowed properties
 function filterProperties(shape, allowedProperties) {
     return Object.keys(shape).reduce((filtered, key) => {
-        if (allowedProperties.includes(key) || key === "premade" || key === "custom" || key === "outline") {
+        if (allowedProperties.includes(key) || key === "shape" || key === "custom" || key === "outline") {
             filtered[key] = shape[key];
         }
         return filtered;
@@ -101,48 +255,49 @@ function filterProperties(shape, allowedProperties) {
 
 
 // Drawing Functions
-function drawDiagram() {
+function drawDiagram(objectsAndTransitions) {
+    const {elements, transitions} = objectsAndTransitions;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     elements.forEach(element => {
-        const { outline } = element.shape || {};
+        const { outline } = element.icon || {};
         const outlineThickness = outline?.thickness || 1;
         const outlineColor = outline?.color || "black";
 
         ctx.beginPath();
-        ctx.fillStyle = element.color;
+        ctx.fillStyle = element.icon.color;
         ctx.lineWidth = outlineThickness;
         ctx.strokeStyle = outlineColor;
 
-        const shape = element.shape;
-        const { premade } = shape;
-        switch (premade) {
+        const icon = element.icon;
+        const { shape } = icon;
+        switch (shape) {
             case "rectangle":
-                ctx.rect(element.x, element.y, shape.width, shape.height);
+                ctx.rect(element.position.x, element.position.y, icon.width, icon.height);
                 break;
             case "star":
-                drawStar(ctx, element.x, element.y, shape.size);
+                drawStar(ctx, element.position.x, element.position.y, icon.size);
                 break;
             case "cloud":
-                drawCloud(ctx, element.x, element.y, shape.width, shape.height);
+                drawCloud(ctx, element.position.x, element.position.y, icon.width, icon.height);
                 break;
             case "database":
-                drawDatabase(ctx, element.x, element.y, shape.width, shape.height);
+                drawDatabase(ctx, element.position.x, element.position.y, icon.width, icon.height);
                 break;
             case "line":
             case "line-arrow":
             case "arrow":
-                drawLineOrArrow(ctx, element.x, element.y, shape.length, shape.rotation, premade);
+                drawLineOrArrow(ctx, element.position.x, element.position.y, icon.length, icon.rotation, shape);
                 break;
             case "cat":
-                drawCat(ctx, element.x, element.y, shape.size);
+                drawCat(ctx, element.position.x, element.position.y, icon.size);
                 break;
             case "dog":
-                drawDog(ctx, element.x, element.y, shape.size);
+                drawDog(ctx, element.position.x, element.position.y, icon.size);
                 break;
         }
 
-        // Fill and outline shape
+        // Fill and outline icon
         ctx.fill();
         if (outline) ctx.stroke();
         ctx.closePath();
@@ -153,16 +308,16 @@ function drawDiagram() {
             ctx.font = element.label.font;
             ctx.fillText(
                 element.label.value,
-                element.x + element.label.offsetX,
-                element.y + element.label.offsetY
+                element.position.x + element.label.offsetX,
+                element.position.y + element.label.offsetY
             );
         }
     });
 }
 
-
-// Function to animate the diagram based on movements
-function animateDiagram() {
+// Function to animate properties during transitions
+function animateDiagram(objectsAndTransitions) {
+    const {elements, transitions} = objectsAndTransitions;
     if (animationId) {
         cancelAnimationFrame(animationId);
     }
@@ -178,55 +333,92 @@ function animateDiagram() {
         lastFrameTime = Date.now()
 
         elements.forEach(element => {
-            let currentX = element.x;
-            let currentY = element.y;
+            let currentX = element.position.x;
+            let currentY = element.position.y;
+            const relevantTransitions = transitions.filter(t => t.name === element.name);
 
-            let xMovement = { start: currentX, end: currentX };
-            let yMovement = { start: currentY, end: currentY };
+            relevantTransitions.forEach(transition => {
+                const timeStart = transition.timeStart
+                const timeEnd = transition.timeEnd
+                const position = transition.position
+                const transitionIcon = transition.icon
 
-            movements.forEach(movement => {
-                if (movement.name === element.name && elapsedTime >= movement.timeStart) {
-                    if (typeof movement.actualStartX === 'undefined') {
-                        movement.actualStartX = movement.startX ?? currentX
-                        movement.actualStartY = movement.startY ?? currentY
-                    }
-                    const movementDuration = movement.timeEnd - movement.timeStart
-                    const progress = Math.min(1, (elapsedTime - movement.timeStart) / movementDuration);
-                    const strategy = movement.strategy
-                    
-                    // Handle X axis movement
-                    if (typeof movement.endX !== 'undefined') {
-                        const startX = movement.actualStartX
-                        if (strategy === "linear") {
-                            xMovement.end = interpolateLinear(startX, movement.endX, progress)
-                        } else if (strategy === "cosine") {
-                            xMovement.end = interpolateCosine(startX, movement.endX, progress)
-                        } else {
-                            console.error("Movement has invalid properties", movement)
-                            throw new Error("Unsupported movement strategy " + strategy);
+                if (elapsedTime >= timeStart && elapsedTime <= timeEnd) {
+
+                    const transitionDuration = transition.timeEnd - transition.timeStart
+                    const progress = Math.min(1, (elapsedTime - transition.timeStart) / transitionDuration);
+                    const strategy = transition.strategy
+
+                    if (typeof transition.initialValues === 'undefined') {
+                        transition.initialValues = {
+                            position: {
+                              x: position.startX ?? currentX,
+                              y: position.startY ?? currentY,
+                            },
+                            icon: {
+                                color: transitionIcon?.['color.start'] ?? element.icon.color,
+                                size: transitionIcon?.['size.start'] ?? element.icon.size,
+                                height: transitionIcon?.['height.start'] ?? element.icon.height,
+                                width: transitionIcon?.['width.start'] ?? element.icon.width,
+                                outline: {
+                                  thickness: transitionIcon?.outline?.['thickness.start'] ?? element.icon.outline.thickness,
+                                  color: transitionIcon?.outline?.['color.start'] ?? element.icon.outline.color
+                                }
+                            }
                         }
+
+                        console.log("Transition Start", structuredClone(transition), " on object", structuredClone(element))
                     }
 
-                    // Handle Y axis movement
-                    if (typeof movement.endY !== 'undefined') {
-                        const startY = movement.actualStartY
-                        if (strategy === "linear") {
-                            yMovement.end = interpolateLinear(startY, movement.endY, progress)
-                        } else if (strategy === "cosine") {
-                            yMovement.end = interpolateCosine(startY, movement.endY, progress)
-                        } else {
-                            console.error("Movement has invalid properties", movement)
-                            throw new Error("Unsupported movement strategy " + strategy);
-                        }
+                    // Handle position transition
+                    if (position?.['x.end']) {
+                        element.position.x = interpolate(strategy, transition.initialValues.position.x, position['x.end'], progress);
+                    }
+                    if (position?.['y.end']) {
+                        element.position.y = interpolate(strategy, transition.initialValues.position.y, position['y.end'], progress);
+                    }
+
+                    // Handle color transition
+                    if (transitionIcon?.['color.end']) {
+                        element.icon.color = interpolateColor(strategy, transition.initialValues.icon.color, transitionIcon['color.end'], progress);
+                    }
+
+                    // Handle size/shape transition
+                    if (transitionIcon?.['size.end']) {
+                        element.icon.size = interpolate(strategy, transition.initialValues.icon.size, transitionIcon['size.end'], progress);
+                    }
+
+                    if (transitionIcon?.['height.end']) {
+                        element.icon.height = interpolate(strategy, transition.initialValues.icon.height, transitionIcon['height.end'], progress);
+                    }
+
+                    if (transitionIcon?.['width.end']) {
+                        element.icon.width = interpolate(strategy, transition.initialValues.icon.width, transitionIcon['width.end'], progress);
+                    }
+
+                    // Handle outline thickness transition
+                    if (transitionIcon?.outline?.["thickness.end"]) {
+                        element.icon.outline.thickness = interpolate(
+                            strategy,
+                            transition.initialValues.icon.outline.thickness,
+                            transitionIcon.outline['thickness.end'],
+                            progress
+                        );
+                    }
+
+                    if (transitionIcon?.outline?.['color.end']) {
+                        element.icon.outline.color = interpolateColor(
+                            strategy,
+                            transition.initialValues.icon.outline.color,
+                            transitionIcon.outline['color.end'],
+                            progress
+                        );
                     }
                 }
             });
-
-            element.x = xMovement.end;
-            element.y = yMovement.end;
         });
 
-        drawDiagram();
+        drawDiagram(objectsAndTransitions);
         frames.push(ctx.getImageData(0, 0, canvas.width, canvas.height)); // Capture the frame
 
         if (elapsedTime < animationDuration) {
@@ -240,22 +432,54 @@ function animateDiagram() {
     animate();
 }
 
+// Color interpolation function
+function interpolateColor(strategy, startColor, endColor, t) {
+    const startRGB = hexToRGB(startColor);
+    const endRGB = hexToRGB(endColor);
+
+    const r = Math.round(interpolate(strategy, startRGB.r, endRGB.r, t));
+    const g = Math.round(interpolate(strategy, startRGB.g, endRGB.g, t));
+    const b = Math.round(interpolate(strategy, startRGB.b, endRGB.b, t));
+
+    return `rgb(${r}, ${g}, ${b})`;
+}
+
+// General interpolation function
+function interpolate(strategy, startValue, endValue, progress) {
+//    console.log("Strategy: ", strategy, " start", startValue, " end", endValue, "progress", progress)
+    if (strategy === "linear") {
+        return interpolateLinear(startValue, endValue, progress)
+    } else if (strategy === "cosine") {
+        return interpolateCosine(startValue, endValue, progress)
+    } else {
+        console.error("Movement has invalid properties", transition)
+        throw new Error("Unsupported transition strategy " + strategy);
+    }
+}
+
+function standardizeColor(str) {
+    var ctx = document.createElement("canvas").getContext("2d");
+    ctx.fillStyle = str;
+//    console.log("Color " + str +": ", ctx.fillStyle)
+    return ctx.fillStyle;
+}
+
+// Helper function to convert hex color to RGB
+function hexToRGB(hex) {
+    const bigint = parseInt(hex.slice(1), 16);
+    const r = (bigint >> 16) & 255;
+    const g = (bigint >> 8) & 255;
+    const b = bigint & 255;
+    return { r, g, b };
+}
+
 function interpolateLinear(startPos, endPos, progress) {
-    console.log("startPos", startPos, "endPos", endPos, "progress", progress)
     return startPos + (endPos - startPos) * progress;
 }
 
 function interpolateCosine(startPos, endPos, progress) {
     let cosProgress = (1 - Math.cos(progress * Math.PI)) / 2
     return startPos * (1 - cosProgress) + endPos * cosProgress
-}
-
-// Calculate the velocity based on a parabolic curve
-function calculateVelocity(startY, endY, duration, t) {
-    const midPointTime = duration / 2; // Midpoint in time
-    const a = (endY - startY) / Math.pow(midPointTime, 2); // Coefficient for parabolic velocity
-
-    return a * Math.pow(t - midPointTime, 2) + startY; // Parabolic velocity equation
 }
 
 // Function to generate GIF from captured frames
@@ -430,11 +654,6 @@ function drawLineOrArrow(ctx, x, y, length, rotation, type) {
     ctx.restore();
 }
 
-
-// Elements for YAML input and defaults display
-const yamlInput = document.getElementById("yamlInput");
-const yamlDefaultsDisplay = document.getElementById("yamlDefaultsDisplay");
-
 // Default values for different shapes
 const shapeDefaults = {
     rectangle: { width: 100, height: 50 },
@@ -447,8 +666,8 @@ const shapeDefaults = {
 };
 
 // Function to set default values for shapes
-function setShapeDefaults(shape, premade) {
-    switch (premade) {
+function setShapeDefaults(shape, shape) {
+    switch (shape) {
         case "rectangle":
             shape.width = shape.width || 100;
             shape.height = shape.height || 50;
@@ -480,33 +699,22 @@ function setShapeDefaults(shape, premade) {
 function updateYamlDefaultsDisplay() {
     try {
         const yamlText = yamlInput.value;
-        const doc = jsyaml.load(yamlText);
+        const {elements, transitions} = parseYAML(yamlText)
         const cursorPosition = yamlInput.selectionStart;
-        const objectUnderCursor = getObjectUnderCursor(doc, cursorPosition);
+        const objectUnderCursor = getObjectUnderCursor(elements, cursorPosition);
 
         if (objectUnderCursor) {
+
+            setDefaults(objectUnderCursor, EXPECTED_PROPERTIES.object, "object.");
+            warnUnexpectedProps(objectUnderCursor, EXPECTED_PROPERTIES.object, "object.");
+            errorMissingRequiredProps(objectUnderCursor, EXPECTED_PROPERTIES.object, "object.")
+            errorExtraneousProps(objectUnderCursor, EXPECTED_PROPERTIES.object, "object.")
             if (objectUnderCursor.shape) {
-                const { premade } = objectUnderCursor.shape;
-                if (premade && allowedShapeProperties[premade]) {
-                    objectUnderCursor.shape = setShapeDefaults(objectUnderCursor.shape, premade); // Apply shape defaults
-                    objectUnderCursor.shape.outline = {
-                        thickness: objectUnderCursor.shape.outline?.thickness || 1,
-                        color: objectUnderCursor.shape.outline?.color || "black"
-                    };
-                    objectUnderCursor.shape = filterProperties(objectUnderCursor.shape, allowedShapeProperties[premade]);
+                const { shape } = objectUnderCursor.icon.shape;
+                if (shape && allowedShapeProperties[shape]) {
+                    objectUnderCursor.shape = filterProperties(objectUnderCursor.shape, allowedShapeProperties[shape]);
                 }
             }
-
-            // Default label properties if not present
-            objectUnderCursor.label = {
-                offsetX: 10,
-                offsetY: 10,
-                font: '14px Arial',
-                style: 'normal',
-                color: 'black',
-                value: '',
-                ...objectUnderCursor.label
-            };
 
             // Display the object with defaults in the read-only text area
             yamlDefaultsDisplay.value = jsyaml.dump(objectUnderCursor);
@@ -521,12 +729,12 @@ function updateYamlDefaultsDisplay() {
 
 
 // Helper function to find the object under cursor in YAML input
-function getObjectUnderCursor(doc, cursorPosition) {
+function getObjectUnderCursor(elements, cursorPosition) {
     const yamlLines = yamlInput.value.substring(0, cursorPosition).split('\n');
     const objectName = findObjectName(yamlLines);
 
     // Return the found object with that name
-    return doc.objects?.find(obj => obj.name === objectName) || null;
+    return elements.find(obj => obj.name === objectName) || null;
 }
 
 // Helper function to find object name from cursor position in YAML input
@@ -538,7 +746,7 @@ function findObjectName(lines) {
     return null;
 }
 
-// Event listeners for YAML input changes and cursor movements
+// Event listeners for YAML input changes and cursor transitions
 yamlInput.addEventListener("input", updateYamlDefaultsDisplay);
 yamlInput.addEventListener("click", updateYamlDefaultsDisplay);
 yamlInput.addEventListener("keyup", updateYamlDefaultsDisplay);
