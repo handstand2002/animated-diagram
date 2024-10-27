@@ -26,7 +26,8 @@ const EXPECTED_PROPERTIES = {
         },
         position: {
             x: { default: 0 },
-            y: { default: 0 }
+            y: { default: 0 },
+            z: { default: 1000 }
         },
         label: {
             offsetX: { default: 10 },
@@ -45,7 +46,9 @@ const EXPECTED_PROPERTIES = {
             'x.start': { required: false },
             'x.end': { required: false },
             'y.start': { required: false },
-            'y.end': { required: false }
+            'y.end': { required: false },
+            'z.start': { required: false },
+            'z.end': { required: false },
         },
         label: {
             'offsetX.start': { required: false },
@@ -226,7 +229,9 @@ function parseYAML(yamlText) {
     let elements = doc.objects || [];
     let transitions = doc.transitions || [];
 
+    let i = 0;
     elements.forEach(el => {
+        el.defineOrder = i++
         // Validate against expected properties
         setDefaults(el, EXPECTED_PROPERTIES.object, "object.");
         warnUnexpectedProps(el, EXPECTED_PROPERTIES.object, "object.");
@@ -265,7 +270,18 @@ function drawDiagram(objectsAndTransitions) {
     const {elements, transitions} = objectsAndTransitions;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    elements.forEach(element => {
+    elementsCopy = [];
+
+    for (i = 0; i < elements.length; i++) {
+      elementsCopy[i] = elements[i];
+    }
+    elementsCopy.sort((a,b) => {
+        const diff = a.position.z - b.position.z;
+        if (diff !== 0) return diff; // Sort by order first
+        return a.defineOrder - b.defineOrder; // If order are equal, sort by defineOrder
+    })
+
+    elementsCopy.forEach(element => {
         const { outline } = element.icon || {};
         const outlineThickness = outline?.thickness || 1;
         const outlineColor = outline?.color || "black";
@@ -360,7 +376,9 @@ function animateDiagram(objectsAndTransitions) {
                             position: {
                               x: position.startX ?? currentX,
                               y: position.startY ?? currentY,
+                              z: transition.position?.['z.start'] ?? element.position.z
                             },
+
                             icon: {
                                 color: transitionIcon?.['color.start'] ?? element.icon.color,
                                 size: transitionIcon?.['size.start'] ?? element.icon.size,
@@ -376,50 +394,17 @@ function animateDiagram(objectsAndTransitions) {
                         console.log("Transition Start", structuredClone(transition), " on object", structuredClone(element))
                     }
 
-                    // Handle position transition
-                    if (position?.['x.end']) {
-                        element.position.x = interpolate(strategy, transition.initialValues.position.x, position['x.end'], progress);
-                    }
-                    if (position?.['y.end']) {
-                        element.position.y = interpolate(strategy, transition.initialValues.position.y, position['y.end'], progress);
-                    }
+                    // Handle transition of attributes
+                    element.position.x = interpolate(strategy, transition.initialValues.position.x, position?.['x.end'], progress);
+                    element.position.y = interpolate(strategy, transition.initialValues.position.y, position?.['y.end'], progress);
+                    element.position.z = interpolate(strategy, transition.initialValues.position.z, position?.['z.end'], progress);
+                    element.icon.size = interpolate(strategy, transition.initialValues.icon.size, transitionIcon?.['size.end'], progress);
+                    element.icon.height = interpolate(strategy, transition.initialValues.icon.height, transitionIcon?.['height.end'], progress);
+                    element.icon.width = interpolate(strategy, transition.initialValues.icon.width, transitionIcon?.['width.end'], progress);
+                    element.icon.outline.thickness = interpolate(strategy, transition.initialValues.icon.outline.thickness, transitionIcon?.outline?.['thickness.end'], progress);
 
-                    // Handle color transition
-                    if (transitionIcon?.['color.end']) {
-                        element.icon.color = interpolateColor(strategy, transition.initialValues.icon.color, transitionIcon['color.end'], progress);
-                    }
-
-                    // Handle size/shape transition
-                    if (transitionIcon?.['size.end']) {
-                        element.icon.size = interpolate(strategy, transition.initialValues.icon.size, transitionIcon['size.end'], progress);
-                    }
-
-                    if (transitionIcon?.['height.end']) {
-                        element.icon.height = interpolate(strategy, transition.initialValues.icon.height, transitionIcon['height.end'], progress);
-                    }
-
-                    if (transitionIcon?.['width.end']) {
-                        element.icon.width = interpolate(strategy, transition.initialValues.icon.width, transitionIcon['width.end'], progress);
-                    }
-
-                    // Handle outline thickness transition
-                    if (transitionIcon?.outline?.["thickness.end"]) {
-                        element.icon.outline.thickness = interpolate(
-                            strategy,
-                            transition.initialValues.icon.outline.thickness,
-                            transitionIcon.outline['thickness.end'],
-                            progress
-                        );
-                    }
-
-                    if (transitionIcon?.outline?.['color.end']) {
-                        element.icon.outline.color = interpolateColor(
-                            strategy,
-                            transition.initialValues.icon.outline.color,
-                            transitionIcon.outline['color.end'],
-                            progress
-                        );
-                    }
+                    element.icon.color = interpolateColor(strategy, transition.initialValues.icon.color, transitionIcon?.['color.end'], progress);
+                    element.icon.outline.color = interpolateColor(strategy, transition.initialValues.icon.outline.color, transitionIcon?.outline?.['color.end'], progress);
                 }
             });
         });
@@ -440,6 +425,9 @@ function animateDiagram(objectsAndTransitions) {
 
 // Color interpolation function
 function interpolateColor(strategy, startColor, endColor, t) {
+    if (typeof endColor === 'undefined') {
+        return startColor
+    }
     const startRGB = hexToRGB(startColor);
     const endRGB = hexToRGB(endColor);
 
@@ -453,6 +441,9 @@ function interpolateColor(strategy, startColor, endColor, t) {
 // General interpolation function
 function interpolate(strategy, startValue, endValue, progress) {
 //    console.log("Strategy: ", strategy, " start", startValue, " end", endValue, "progress", progress)
+    if (typeof endValue === 'undefined') {
+        return startValue
+    }
     if (strategy === "linear") {
         return interpolateLinear(startValue, endValue, progress)
     } else if (strategy === "cosine") {
