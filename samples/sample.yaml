@@ -1,29 +1,127 @@
 objects:
-  - name: o1
+  - name: producer
     icon:
-      shape: star
-      size: 50
-      color: "#DDDDDD"
+      shape: rectangle
+      height: 30
+      width: 90
+      color: "#BBBBFF"
     label:
-      value: A
-      offsetX: 15
-      offsetY: 35
-      font: '30px Arial'
+      value: Producer
+      offsetX: 10
+      offsetY: 20
+      font: '17px Arial'
       style: bold
-      color: green
+      color: black
     position:
-      x: 50
-      y: 50
+      x: 150
+      y: 10
+  - name: p0
+    icon:
+      shape: database
+      height: 60
+      width: 60
+      color: "#BBBBFF"
+    label:
+      value: P0
+      offsetX: -10
+      offsetY: 5
+      font: '17px Arial'
+      style: bold
+      color: black
+    position:
+      x: 150
+      y: 300
+  - name: p1
+    icon:
+      shape: database
+      height: 60
+      width: 60
+      color: "#BBBBFF"
+    label:
+      value: P1
+      offsetX: -10
+      offsetY: 5
+      font: '17px Arial'
+      style: bold
+      color: black
+    position:
+      x: 250
+      y: 300
+  - name: d1
+    icon:
+      shape: rectangle
+      height: 20
+      width: 20
+      color: "#BBBBFF"
+      outline:
+        thickness: 0
+    position:
+      x: 200
+      y: 10
+      z: 999
+  - name: d2
+    icon:
+      shape: rectangle
+      height: 20
+      width: 20
+      color: "#99CC99"
+      outline:
+        thickness: 0
+    position:
+      x: 200
+      y: 10
+      z: 999
 
 transitions:
-  - name: o1
-    timeStart: 0
-    timeEnd: 1000
+  - name: d1
+    timeStart: 1000
+    timeEnd: 2000
     strategy: cosine
     position:
-      x.end: 300
-      y.end: 200
-    icon:
-      color.end: yellow
-      size.end: 100
+      y.end: 315
+      x.end: 220
+  - name: d2
+    timeStart: 1500
+    timeEnd: 2500
+    strategy: cosine
+    position:
+      x.end: 150
+      y.end: 315
+  - name: d1
+    timeStart: 2000
+    timeEnd: 3000
+    strategy: cosine
+    position:
+      x.start: 200
+      x.end: 220
+      y.start: 10
+      y.end: 315
+  - name: d2
+    timeStart: 2500
+    timeEnd: 3500
+    strategy: cosine
+    position:
+      x.start: 200
+      x.end: 150
+      y.start: 10
+      y.end: 315
+  - name: d1
+    timeStart: 3000
+    timeEnd: 4000
+    strategy: cosine
+    position:
+      x.start: 200
+      x.end: 220
+      y.start: 10
+      y.end: 315
+  - name: d2
+    timeStart: 3500
+    timeEnd: 4500
+    strategy: cosine
+    position:
+      x.start: 200
+      x.end: 150
+      y.start: 10
+      y.end: 315
+
 

@@ -283,7 +283,7 @@ function drawDiagram(objectsAndTransitions) {
 
     elementsCopy.forEach(element => {
         const { outline } = element.icon || {};
-        const outlineThickness = outline?.thickness || 1;
+        const outlineThickness = outline?.thickness ?? 1;
         const outlineColor = outline?.color || "black";
 
         ctx.beginPath();
@@ -321,7 +321,7 @@ function drawDiagram(objectsAndTransitions) {
 
         // Fill and outline icon
         ctx.fill();
-        if (outline) ctx.stroke();
+        if (outline && outlineThickness > 0) ctx.stroke();
         ctx.closePath();
 
         // Draw label
@@ -355,14 +355,11 @@ function animateDiagram(objectsAndTransitions) {
         lastFrameTime = Date.now()
 
         elements.forEach(element => {
-            let currentX = element.position.x;
-            let currentY = element.position.y;
             const relevantTransitions = transitions.filter(t => t.name === element.name);
 
             relevantTransitions.forEach(transition => {
                 const timeStart = transition.timeStart
                 const timeEnd = transition.timeEnd
-                const position = transition.position
                 const transitionIcon = transition.icon
 
                 if (elapsedTime >= timeStart && elapsedTime <= timeEnd) {
@@ -374,8 +371,8 @@ function animateDiagram(objectsAndTransitions) {
                     if (typeof transition.initialValues === 'undefined') {
                         transition.initialValues = {
                             position: {
-                              x: position.startX ?? currentX,
-                              y: position.startY ?? currentY,
+                              x: transition.position?.['x.start'] ?? element.position.x,
+                              y: transition.position?.['y.start'] ?? element.position.y,
                               z: transition.position?.['z.start'] ?? element.position.z
                             },
 
@@ -395,9 +392,9 @@ function animateDiagram(objectsAndTransitions) {
                     }
 
                     // Handle transition of attributes
-                    element.position.x = interpolate(strategy, transition.initialValues.position.x, position?.['x.end'], progress);
-                    element.position.y = interpolate(strategy, transition.initialValues.position.y, position?.['y.end'], progress);
-                    element.position.z = interpolate(strategy, transition.initialValues.position.z, position?.['z.end'], progress);
+                    element.position.x = interpolate(strategy, transition.initialValues.position.x, transition.position?.['x.end'], progress);
+                    element.position.y = interpolate(strategy, transition.initialValues.position.y, transition.position?.['y.end'], progress);
+                    element.position.z = interpolate(strategy, transition.initialValues.position.z, transition.position?.['z.end'], progress);
                     element.icon.size = interpolate(strategy, transition.initialValues.icon.size, transitionIcon?.['size.end'], progress);
                     element.icon.height = interpolate(strategy, transition.initialValues.icon.height, transitionIcon?.['height.end'], progress);
                     element.icon.width = interpolate(strategy, transition.initialValues.icon.width, transitionIcon?.['width.end'], progress);
