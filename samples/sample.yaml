@@ -20,7 +20,7 @@ objects:
       shape: database
       height: 60
       width: 60
-      color: "#BBBBFF"
+      color: "#99CC99"
     label:
       value: P0
       offsetX: -10
