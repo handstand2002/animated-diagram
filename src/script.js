@@ -366,7 +366,6 @@ function animateDiagram(objectsAndTransitions) {
 
                     const transitionDuration = transition.timeEnd - transition.timeStart
                     const progress = Math.min(1, (elapsedTime - transition.timeStart) / transitionDuration);
-                    const strategy = transition.strategy
 
                     if (typeof transition.initialValues === 'undefined') {
                         transition.initialValues = {
@@ -388,8 +387,10 @@ function animateDiagram(objectsAndTransitions) {
                             }
                         }
 
+
                         console.log("Transition Start", structuredClone(transition), " on object", structuredClone(element))
                     }
+                    const strategy = transition.strategy
 
                     // Handle transition of attributes
                     element.position.x = interpolate(strategy, transition.initialValues.position.x, transition.position?.['x.end'], progress);
@@ -435,9 +436,10 @@ function interpolateColor(strategy, startColor, endColor, t) {
     return `rgb(${r}, ${g}, ${b})`;
 }
 
+const isStrategyFn = /^ *[a-zA-Z][a-zA-Z0-9_]* *=>/
+
 // General interpolation function
 function interpolate(strategy, startValue, endValue, progress) {
-//    console.log("Strategy: ", strategy, " start", startValue, " end", endValue, "progress", progress)
     if (typeof endValue === 'undefined') {
         return startValue
     }
@@ -445,8 +447,9 @@ function interpolate(strategy, startValue, endValue, progress) {
         return interpolateLinear(startValue, endValue, progress)
     } else if (strategy === "cosine") {
         return interpolateCosine(startValue, endValue, progress)
+    } else if (isStrategyFn.test(strategy)) {
+        return interpolateCustom(strategy, startValue, endValue, progress)
     } else {
-        console.error("Movement has invalid properties", transition)
         throw new Error("Unsupported transition strategy " + strategy);
     }
 }
@@ -454,7 +457,6 @@ function interpolate(strategy, startValue, endValue, progress) {
 function standardizeColor(str) {
     var ctx = document.createElement("canvas").getContext("2d");
     ctx.fillStyle = str;
-//    console.log("Color " + str +": ", ctx.fillStyle)
     return ctx.fillStyle;
 }
 
@@ -474,6 +476,11 @@ function interpolateLinear(startPos, endPos, progress) {
 function interpolateCosine(startPos, endPos, progress) {
     let cosProgress = (1 - Math.cos(progress * Math.PI)) / 2
     return startPos * (1 - cosProgress) + endPos * cosProgress
+}
+
+function interpolateCustom(strategy, startPos, endPos, progress) {
+    res = eval(strategy)(progress)
+    return startPos + (endPos - startPos) * res;
 }
 
 // Function to generate GIF from captured frames
